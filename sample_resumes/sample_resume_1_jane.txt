@@ -1,0 +1,18 @@
+Name: Jane Doe
+Email: jane.doe.hr@example.com
+Phone: +1-555-0101
+LinkedIn: https://www.google.com/search?q=linkedin.com/in/janedoe
+
+Summary: Highly motivated data analyst with 3 years of experience in Python and SQL, specializing in predictive modeling and reporting.
+
+Experience:
+Data Analyst, Tech Corp (2022-Present)
+
+Developed and maintained critical SQL pipelines for business intelligence.
+
+Used Python and Pandas for data manipulation and analysis.
+
+Education:
+B.S. Computer Science, State University, 2022
+
+Skills: Python (3 years), SQL, Data Visualization, Pandas, ETL.
