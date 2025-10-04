@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HireFlow AI Dashboard</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styling for pre blocks to ensure readability */
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+        /* Style for the active tab indicator */
+        .tab-active {
+            border-bottom: 3px solid #10b981;
+            color: #10b981;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen font-sans">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': '#10b981',
+                        'secondary': '#1f2937',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+        
+        // --- CONFIGURATION ---
+        const API_BASE_URL = 'http://127.0.0.1:5050';
+        
+        // Placeholder JD data (matches the break_tests.py structure)
+        const SAMPLE_JD = {
+            "title": "Data Analyst",
+            "required_skills": ["python", "sql"],
+            "required_years": 2
+        };
+
+        // Global variable to store the last successful candidate ID
+        let lastCandidateId = null;
+
+        // --- UTILITY FUNCTIONS ---
+
+        /** Displays a message in the designated area */
+        function displayMessage(type, content) {
+            const messageBox = document.getElementById('message-box');
+            let color = '';
+            if (type === 'success') color = 'bg-green-100 border-green-400 text-green-700';
+            else if (type === 'error') color = 'bg-red-100 border-red-400 text-red-700';
+            else color = 'bg-blue-100 border-blue-400 text-blue-700';
+            
+            messageBox.innerHTML = `
+                <div class="border px-4 py-3 rounded relative ${color}" role="alert">
+                    <strong class="font-bold">${type.toUpperCase()}:</strong>
+                    <span class="block sm:inline">${content}</span>
+                </div>
+            `;
+        }
+
+        /** Clears results and messages */
+        function clearResults() {
+            document.getElementById('results-output').textContent = '{}';
+            document.getElementById('message-box').innerHTML = '';
+            document.getElementById('current-candidate-id').textContent = 'N/A';
+        }
+
+        /** Displays JSON content nicely */
+        function displayJson(data) {
+            document.getElementById('results-output').textContent = JSON.stringify(data, null, 2);
+        }
+
+        // --- AGENT FUNCTIONS ---
+
+        async function runTalentScout() {
+            clearResults();
+            const resumeText = document.getElementById('resume-input').value;
+            const jdJson = SAMPLE_JD;
+
+            if (!resumeText) {
+                displayMessage('error', 'Please paste a resume text.');
+                return;
+            }
+
+            displayMessage('info', 'Running TalentScout... Calling /screen_resume endpoint.');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/screen_resume`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ resume_text: resumeText, job_description: jdJson })
+                });
+
+                const data = await response.json();
+                displayJson(data);
+
+                if (response.ok) {
+                    lastCandidateId = data.candidate_id;
+                    document.getElementById('current-candidate-id').textContent = lastCandidateId;
+                    document.getElementById('onboarding-candidate-id').value = lastCandidateId;
+                    
+                    const score = data.screening?.scores?.computed_role_fit || 'N/A';
+                    const confidence = data.screening?.scores?.confidence || 'N/A';
+                    const review = data.human_review_required ? 'YES (Gated)' : 'No';
+                    
+                    displayMessage('success', 
+                        `Screening Complete. Candidate ID: ${lastCandidateId}. Score: ${score}. Confidence: ${confidence}. Human Review Required: ${review}.`
+                    );
+                } else {
+                    displayMessage('error', `API Error (${response.status}): ${data.error || 'Check server logs.'}`);
+                }
+
+            } catch (error) {
+                displayMessage('error', `Network Error: Could not reach Flask API on ${API_BASE_URL}. Is app.py running?`);
+                console.error('Fetch Error:', error);
+            }
+        }
+
+        async function runOnboarder() {
+            clearResults();
+            const candidateId = document.getElementById('onboarding-candidate-id').value;
+            const startDate = document.getElementById('onboarding-start-date').value || new Date().toISOString().slice(0, 10);
+
+            if (!candidateId) {
+                displayMessage('error', 'Please run a resume screening first, or enter a Candidate ID.');
+                return;
+            }
+
+            displayMessage('info', 'Running Onboarder... Generating 30/60/90 day plan.');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/generate_onboarding`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ candidate_id: candidateId, start_date: startDate })
+                });
+
+                const data = await response.json();
+                displayJson(data);
+
+                if (response.ok) {
+                    const milestones = data.onboarding_plan?.milestones?.length || 0;
+                    displayMessage('success', `Onboarding Plan Generated! ${milestones} milestones created for Candidate ID ${candidateId}.`);
+                } else {
+                    displayMessage('error', `API Error (${response.status}): ${data.error || 'Check server logs.'}`);
+                }
+
+            } catch (error) {
+                displayMessage('error', `Network Error: Could not reach Flask API on ${API_BASE_URL}. Is app.py running?`);
+            }
+        }
+
+        async function runPolicyAnswerer() {
+            clearResults();
+            const question = document.getElementById('policy-question').value;
+
+            if (!question) {
+                displayMessage('error', 'Please enter a policy question.');
+                return;
+            }
+
+            displayMessage('info', 'Running PolicyAnswerer... Grounding answer in policies.json.');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/policy_qa`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: question })
+                });
+
+                const data = await response.json();
+                displayJson(data);
+
+                if (response.ok) {
+                    const answer = data.answer;
+                    const citation = data.citation?.doc_id || 'None';
+                    
+                    if (answer === 'NO_ANSWER_FOUND') {
+                         displayMessage('error', 'Policy Answerer returned: NO_ANSWER_FOUND. Policy snippet did not contain the answer.');
+                    } else {
+                        displayMessage('success', `Answer Found! Citation: ${citation}. Policy Answer: ${answer.substring(0, 80)}...`);
+                    }
+                    
+                } else {
+                    displayMessage('error', `API Error (${response.status}): ${data.error || 'Check server logs.'}`);
+                }
+
+            } catch (error) {
+                displayMessage('error', `Network Error: Could not reach Flask API on ${API_BASE_URL}. Is app.py running?`);
+            }
+        }
+        
+        // --- TAB SWITCHING LOGIC ---
+
+        const tabs = ['screening', 'onboarding', 'policy'];
+        
+        function switchTab(activeTab) {
+            tabs.forEach(tab => {
+                const button = document.getElementById(`${tab}-tab-button`);
+                const content = document.getElementById(`${tab}-content`);
+                
+                if (tab === activeTab) {
+                    button.classList.add('tab-active');
+                    content.classList.remove('hidden');
+                } else {
+                    button.classList.remove('tab-active');
+                    content.classList.add('hidden');
+                }
+            });
+            clearResults();
+        }
+
+        // Initialize to the first tab on load
+        document.addEventListener('DOMContentLoaded', () => {
+            switchTab('screening');
+            document.getElementById('jd-info').textContent = JSON.stringify(SAMPLE_JD, null, 2);
+        });
+
+    </script>
+
+    <header class="bg-secondary text-white shadow-lg p-6">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <h1 class="text-3xl font-bold">HireFlow AI Dashboard</h1>
+            <div class="text-sm">
+                <p>Backend API Status: <span class="font-semibold text-primary">Running on 127.0.0.1:5050</span></p>
+                <p>Current Candidate ID: <span id="current-candidate-id" class="font-semibold text-yellow-300">N/A</span></p>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto p-6 md:grid md:grid-cols-5 md:gap-6">
+        
+        <!-- Left Column: Input and Agents -->
+        <section class="md:col-span-2 bg-white p-6 rounded-lg shadow-xl h-fit">
+            <h2 class="text-xl font-semibold text-secondary mb-4">Multi-Agent Control Panel</h2>
+
+            <!-- Tab Buttons -->
+            <div class="flex border-b border-gray-200 mb-6">
+                <button id="screening-tab-button" onclick="switchTab('screening')" 
+                        class="px-4 py-2 text-sm font-medium text-gray-600 transition duration-150 ease-in-out hover:text-primary focus:outline-none">
+                    1. TalentScout
+                </button>
+                <button id="onboarding-tab-button" onclick="switchTab('onboarding')"
+                        class="px-4 py-2 text-sm font-medium text-gray-600 transition duration-150 ease-in-out hover:text-primary focus:outline-none">
+                    2. Onboarder
+                </button>
+                <button id="policy-tab-button" onclick="switchTab('policy')"
+                        class="px-4 py-2 text-sm font-medium text-gray-600 transition duration-150 ease-in-out hover:text-primary focus:outline-none">
+                    3. PolicyAnswerer
+                </button>
+            </div>
+
+            <!-- TalentScout Content -->
+            <div id="screening-content" class="space-y-4">
+                <p class="text-sm text-gray-500">Inputs: Resume Text + Job Description (Hardcoded below).</p>
+                <div class="bg-gray-50 p-3 rounded-lg border border-yellow-200">
+                    <h4 class="text-xs font-bold text-yellow-700 mb-1">Job Description (JD)</h4>
+                    <pre id="jd-info" class="text-xs text-gray-600"></pre>
+                </div>
+                <textarea id="resume-input" rows="8" placeholder="Paste Candidate Resume Text here (e.g., from sample_resumes/sample_resume_1.txt)"
+                          class="w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary"></textarea>
+                <button onclick="runTalentScout()"
+                        class="w-full bg-primary hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition duration-200 ease-in-out">
+                    Run TalentScout: Screen Resume
+                </button>
+            </div>
+
+            <!-- Onboarder Content -->
+            <div id="onboarding-content" class="hidden space-y-4">
+                <p class="text-sm text-gray-500">Generates 30/60/90-day plan based on the candidate's screening results.</p>
+                <div>
+                    <label for="onboarding-candidate-id" class="block text-sm font-medium text-gray-700">Candidate ID (Populates automatically)</label>
+                    <input type="text" id="onboarding-candidate-id" placeholder="Paste ID or run screening first"
+                           class="mt-1 w-full p-3 border border-gray-300 rounded-lg bg-gray-50 focus:ring-primary focus:border-primary">
+                </div>
+                 <div>
+                    <label for="onboarding-start-date" class="block text-sm font-medium text-gray-700">Start Date</label>
+                    <input type="date" id="onboarding-start-date" value="2025-10-15"
+                           class="mt-1 w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary">
+                </div>
+                <button onclick="runOnboarder()"
+                        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition duration-200 ease-in-out">
+                    Run Onboarder: Generate Plan
+                </button>
+            </div>
+
+            <!-- PolicyAnswerer Content -->
+            <div id="policy-content" class="hidden space-y-4">
+                <p class="text-sm text-gray-500">Answers questions by looking only at policy data in policies.json (RAG).</p>
+                <input type="text" id="policy-question" placeholder="E.g., How many sick days do I get?"
+                       class="w-full p-3 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary">
+                <p class="text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">Example policy question: "How much vacation time do I accrue?"</p>
+                <button onclick="runPolicyAnswerer()"
+                        class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg shadow-lg transition duration-200 ease-in-out">
+                    Run PolicyAnswerer: Get Answer
+                </button>
+            </div>
+            
+        </section>
+
+        <!-- Right Column: Results and Output -->
+        <section class="md:col-span-3 mt-6 md:mt-0 space-y-4">
+            
+            <div id="message-box">
+                <!-- Messages will appear here -->
+            </div>
+
+            <div class="bg-white p-6 rounded-lg shadow-xl">
+                <h2 class="text-xl font-semibold text-secondary mb-4">Agent Output (JSON)</h2>
+                <div class="bg-gray-800 text-green-300 p-4 rounded-lg overflow-x-auto">
+                    <pre id="results-output" class="text-sm">{}</pre>
+                </div>
+            </div>
+
+            <div class="bg-gray-200 p-4 rounded-lg">
+                <h3 class="text-md font-semibold text-gray-800 mb-2">Demo Instructions:</h3>
+                <ol class="list-decimal list-inside text-sm text-gray-700 space-y-1">
+                    <li>Ensure **app.py is running** in Terminal 1 (`http://127.0.0.1:5050`).</li>
+                    <li>**TALENTSCOUT:** Paste a sample resume (from your `sample_resumes` folder) into the box and click 'Run'. The score, confidence, and ID will appear.</li>
+                    <li>**ONBOARDER:** Switch to the Onboarder tab. The Candidate ID should automatically populate. Click 'Generate Plan'.</li>
+                    <li>**POLICY ANSWERER:** Switch to the Policy tab. Ask "How many sick days do I get?" and click 'Get Answer'.</li>
+                    <li>**BREAK PHASE:** Show the judge the output in your Terminal 2 from running `break_tests.py` and explain why those outputs mean the system is safe.</li>
+                </ol>
+            </div>
+        </section>
+
+    </main>
+</body>
+</html>
