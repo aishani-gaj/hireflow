@@ -1,0 +1,18 @@
+Name: Aisha Khan
+Email: aisha.khan.data@example.com
+Phone: +1-555-0102
+LinkedIn: https://www.google.com/search?q=linkedin.com/in/aishakhan
+
+Summary: Three years of experience in complex data pipelines. Successfully reduced processing time by 40% using optimized Python scripts.
+
+Experience:
+Lead Data Engineer, Global Dynamics (2022-Present)
+
+Architected and managed a high-volume data warehouse using SQL.
+
+Mentored junior staff on best practices for Python development.
+
+Education:
+M.S. Data Science, City College, 2022
+
+Skills: Python, SQL, Cloud Computing, ETL.
